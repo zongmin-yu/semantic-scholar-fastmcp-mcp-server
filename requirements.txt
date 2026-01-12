@@ -10,4 +10,4 @@ python-dotenv>=1.0.0
 
 # Server dependencies
 uvicorn>=0.27.1
-fastmcp>=0.1.0 
+fastmcp>=2.0.0 

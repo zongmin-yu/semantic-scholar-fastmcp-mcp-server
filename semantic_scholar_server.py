@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 # Global HTTP client for connection pooling
 http_client = None
+# Event to keep process alive when FastMCP detaches
+stop_event = None
 
 # Rate Limiting Configuration
 @dataclass
@@ -2213,7 +2215,32 @@ async def shutdown():
     
     # Cleanup resources
     await cleanup_client()
-    await mcp.cleanup()
+    try:
+        cleanup_fn = getattr(mcp, "cleanup", None)
+        if cleanup_fn:
+            if asyncio.iscoroutinefunction(cleanup_fn):
+                await cleanup_fn()
+            else:
+                cleanup_fn()
+        else:
+            # Try common alternative names on FastMCP implementations
+            for name in ("shutdown", "stop", "close"):
+                fn = getattr(mcp, name, None)
+                if fn:
+                    if asyncio.iscoroutinefunction(fn):
+                        await fn()
+                    else:
+                        fn()
+                    break
+    except Exception as e:
+        logger.error(f"Error during mcp cleanup: {e}")
+    # Signal run_server to stop waiting
+    try:
+        global stop_event
+        if stop_event is not None and not stop_event.is_set():
+            stop_event.set()
+    except Exception:
+        pass
     
     logger.info(f"Cancelled {len(tasks)} tasks")
     logger.info("Shutdown complete")
@@ -2226,19 +2253,34 @@ def init_signal_handlers(loop):
 
 async def run_server():
     """Run the server with proper async context management."""
-    async with mcp:
-        try:
-            # Initialize HTTP client
-            await initialize_client()
-            
-            # Start the server
-            logger.info("Starting Semantic Scholar Server")
-            await mcp.run_async()
-        except Exception as e:
-            logger.error(f"Server error: {e}")
-            raise
-        finally:
-            await shutdown()
+    try:
+        # Initialize HTTP client
+        await initialize_client()
+
+        # Start the server
+        logger.info("Starting Semantic Scholar Server")
+        # run_fastmcp; run_async may detach/return — run it as a background task
+        task = asyncio.create_task(mcp.run_async())
+
+        # Create a stop event to keep the main coroutine alive if FastMCP detaches
+        global stop_event
+        if stop_event is None:
+            stop_event = asyncio.Event()
+
+        # Wait until shutdown() sets the event
+        await stop_event.wait()
+        # Ensure server task is cancelled/awaited on shutdown
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        raise
+    finally:
+        await shutdown()
 
 if __name__ == "__main__":
     try:
