@@ -34,7 +34,7 @@ from pydantic import BaseModel
 
 from .utils.http import make_request, initialize_client
 from .utils.logger import logger
-from .config import Config
+from .config import Config, AuthorDetailFields, PaperFields, PaperDetailFields, CitationReferenceFields
 
 app = FastAPI(title="Semantic Scholar Bridge", version="0.1")
 
@@ -52,8 +52,8 @@ async def _startup():
 @app.get("/v1/paper/search")
 async def paper_search(request: Request, q: str, fields: Optional[str] = None, offset: int = 0, limit: int = 10):
     params = {"query": q, "offset": offset, "limit": limit}
-    if fields:
-        params["fields"] = fields
+    # If caller didn't request specific fields, use server default fields
+    params["fields"] = fields if fields else ",".join(Config.DEFAULT_FIELDS)
     # extract bearer token if present and prefer it over env
     auth = request.headers.get("authorization")
     token = None
@@ -65,7 +65,7 @@ async def paper_search(request: Request, q: str, fields: Optional[str] = None, o
 
 @app.get("/v1/paper/{paper_id}")
 async def paper_details(request: Request, paper_id: str, fields: Optional[str] = None):
-    params = {"fields": fields} if fields else None
+    params = {"fields": fields} if fields else {"fields": ",".join(Config.DEFAULT_FIELDS)}
     auth = request.headers.get("authorization")
     token = None
     if auth and auth.lower().startswith("bearer "):
@@ -76,7 +76,7 @@ async def paper_details(request: Request, paper_id: str, fields: Optional[str] =
 
 @app.post("/v1/paper/batch")
 async def paper_batch(request: Request, batch: IdList, fields: Optional[str] = None):
-    params = {"fields": fields} if fields else None
+    params = {"fields": fields} if fields else {"fields": ",".join(Config.DEFAULT_FIELDS)}
     # Semantic Scholar batch endpoint expects POST with ids in JSON
     # The helper `make_request` currently supports GET; do a direct call here.
     # Reuse the http client from utils.http
@@ -117,8 +117,7 @@ async def paper_batch(request: Request, batch: IdList, fields: Optional[str] = N
 @app.get("/v1/author/search")
 async def author_search(request: Request, q: str, fields: Optional[str] = None, offset: int = 0, limit: int = 10):
     params = {"query": q, "offset": offset, "limit": limit}
-    if fields:
-        params["fields"] = fields
+    params["fields"] = fields if fields else ",".join(AuthorDetailFields.BASIC)
     auth = request.headers.get("authorization")
     token = None
     if auth and auth.lower().startswith("bearer "):
@@ -129,7 +128,7 @@ async def author_search(request: Request, q: str, fields: Optional[str] = None, 
 
 @app.get("/v1/author/{author_id}")
 async def author_details(request: Request, author_id: str, fields: Optional[str] = None):
-    params = {"fields": fields} if fields else None
+    params = {"fields": fields} if fields else {"fields": ",".join(AuthorDetailFields.BASIC)}
     auth = request.headers.get("authorization")
     token = None
     if auth and auth.lower().startswith("bearer "):
@@ -140,7 +139,7 @@ async def author_details(request: Request, author_id: str, fields: Optional[str]
 
 @app.post("/v1/author/batch")
 async def author_batch(request: Request, batch: IdList, fields: Optional[str] = None):
-    params = {"fields": fields} if fields else None
+    params = {"fields": fields} if fields else {"fields": ",".join(AuthorDetailFields.BASIC)}
     from .utils.http import http_client
     if http_client is None:
         await initialize_client()
@@ -178,7 +177,7 @@ async def author_batch(request: Request, batch: IdList, fields: Optional[str] = 
 async def recommendations(request: Request, paper_id: Optional[str] = None, fields: Optional[str] = None):
     if not paper_id:
         raise HTTPException(status_code=400, detail="paper_id is required")
-    params = {"fields": fields} if fields else None
+    params = {"fields": fields} if fields else {"fields": ",".join(PaperFields.DEFAULT)}
     auth = request.headers.get("authorization")
     token = None
     if auth and auth.lower().startswith("bearer "):

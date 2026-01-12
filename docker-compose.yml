@@ -11,3 +11,4 @@
     environment:
       - SEMANTIC_SCHOLAR_API_KEY=none
       - SEMANTIC_SCHOLAR_DEBUG=false
+      - SEMANTIC_SCHOLAR_TIMEOUT=120

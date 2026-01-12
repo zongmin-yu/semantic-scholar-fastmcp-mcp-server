@@ -170,7 +170,7 @@ class Config:
     # API Configuration
     API_VERSION = "v1"
     BASE_URL = f"https://api.semanticscholar.org/graph/{API_VERSION}"
-    TIMEOUT = 30  # seconds
+    TIMEOUT = int(os.getenv("SEMANTIC_SCHOLAR_TIMEOUT", "30"))  # seconds
     
     # Request Limits
     MAX_BATCH_SIZE = 100
