@@ -1,0 +1,14 @@
+ services:
+  semanticscholarmcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: semanticscholarmcp
+    #image: yourownnamespace/semantic-scholar-fastmcp-mcp-server:2026-01-12
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - SEMANTIC_SCHOLAR_API_KEY=none
+      - SEMANTIC_SCHOLAR_DEBUG=false
+      - SEMANTIC_SCHOLAR_TIMEOUT=120

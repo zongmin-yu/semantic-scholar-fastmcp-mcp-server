@@ -10,6 +10,7 @@ import httpx
 from ..mcp import mcp
 from ..config import Config, ErrorType
 from ..utils.http import rate_limiter, get_api_key
+from ..utils.logger import logger
 from ..utils.errors import create_error_response
 
 @mcp.tool()
@@ -89,6 +90,13 @@ async def get_paper_recommendations_single(
             headers = {"x-api-key": api_key} if api_key else {}
             
             url = f"https://api.semanticscholar.org/recommendations/v1/papers/forpaper/{paper_id}"
+            logger.debug(
+                "Semantic Scholar request: method=%s url=%s params=%s headers=%s",
+                "GET",
+                url,
+                params,
+                headers
+            )
             response = await client.get(url, params=params, headers=headers)
             
             # Handle specific error cases
@@ -123,8 +131,6 @@ async def get_paper_recommendations_single(
             f"Request timed out after {Config.TIMEOUT} seconds"
         )
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Unexpected error in recommendations: {str(e)}")
         return create_error_response(
             ErrorType.API_ERROR,
@@ -210,6 +216,14 @@ async def get_paper_recommendations_multi(
             headers = {"x-api-key": api_key} if api_key else {}
             
             url = "https://api.semanticscholar.org/recommendations/v1/papers"
+            logger.debug(
+                "Semantic Scholar request: method=%s url=%s params=%s headers=%s",
+                "POST",
+                url,
+                params,
+                headers
+            )
+            logger.debug("Semantic Scholar request body: %s", request_body)
             response = await client.post(url, params=params, json=request_body, headers=headers)
             
             # Handle specific error cases
@@ -247,8 +261,6 @@ async def get_paper_recommendations_multi(
             f"Request timed out after {Config.TIMEOUT} seconds"
         )
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Unexpected error in recommendations: {str(e)}")
         return create_error_response(
             ErrorType.API_ERROR,

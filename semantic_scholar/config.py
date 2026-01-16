@@ -5,6 +5,7 @@ Configuration for the Semantic Scholar API Server.
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Tuple, Any
+import os
 
 # Rate Limiting Configuration
 @dataclass
@@ -157,7 +158,7 @@ class Config:
     # API Configuration
     API_VERSION = "v1"
     BASE_URL = f"https://api.semanticscholar.org/graph/{API_VERSION}"
-    TIMEOUT = 30  # seconds
+    TIMEOUT = int(os.getenv("SEMANTIC_SCHOLAR_TIMEOUT", "30"))  # seconds
     
     # Request Limits
     MAX_BATCH_SIZE = 100

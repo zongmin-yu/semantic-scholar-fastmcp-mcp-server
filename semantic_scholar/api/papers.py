@@ -10,6 +10,7 @@ import httpx
 from ..mcp import mcp
 from ..config import PaperFields, CitationReferenceFields, AuthorDetailFields, Config, ErrorType
 from ..utils.http import make_request, get_api_key
+from ..utils.logger import logger
 from ..utils.errors import create_error_response
 
 @mcp.tool()
@@ -513,9 +514,18 @@ async def paper_batch_details(
         async with httpx.AsyncClient(timeout=Config.TIMEOUT) as client:
             api_key = get_api_key()
             headers = {"x-api-key": api_key} if api_key else {}
-            
+
+            url = f"{Config.BASE_URL}/paper/batch"
+            logger.debug(
+                "Semantic Scholar request: method=%s url=%s params=%s headers=%s",
+                "POST",
+                url,
+                params,
+                headers
+            )
+            logger.debug("Semantic Scholar request body: %s", {"ids": paper_ids})
             response = await client.post(
-                f"{Config.BASE_URL}/paper/batch",
+                url,
                 params=params,
                 json={"ids": paper_ids},
                 headers=headers

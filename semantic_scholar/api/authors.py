@@ -10,6 +10,7 @@ from ..mcp import mcp
 from ..config import AuthorDetailFields, ErrorType
 from ..utils.http import make_request
 from ..utils.errors import create_error_response
+from ..utils.logger import logger
 
 @mcp.tool()
 async def author_search(
@@ -279,8 +280,17 @@ async def author_batch_details(
             api_key = get_api_key()
             headers = {"x-api-key": api_key} if api_key else {}
             
+            url = f"{Config.BASE_URL}/author/batch"
+            logger.debug(
+                "Semantic Scholar request: method=%s url=%s params=%s headers=%s",
+                "POST",
+                url,
+                params,
+                headers
+            )
+            logger.debug("Semantic Scholar request body: %s", {"ids": author_ids})
             response = await client.post(
-                f"{Config.BASE_URL}/author/batch",
+                url,
                 params=params,
                 json={"ids": author_ids},
                 headers=headers

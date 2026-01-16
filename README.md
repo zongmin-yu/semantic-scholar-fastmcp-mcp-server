@@ -141,6 +141,34 @@ If no API key is provided, the server will use unauthenticated access with lower
   - Get your key from [Semantic Scholar API](https://www.semanticscholar.org/product/api)
   - If not provided, the server will use unauthenticated access
 
+### HTTP Bridge (Built-in)
+
+This repository includes a small HTTP bridge (`semantic_scholar.bridge`) that
+exposes a minimal REST API for common workflows.
+
+Default listening port: `8000`.
+
+Available endpoints:
+
+- `GET /v1/paper/search?q=...` — paper search (params: `fields`, `offset`, `limit`)
+- `GET /v1/paper/{paper_id}` — paper details (param: `fields`)
+- `POST /v1/paper/batch` — batch paper details (JSON: `{ "ids": [ ... ] }`)
+- `GET /v1/author/search?q=...` — author search (params: `fields`, `offset`, `limit`)
+- `GET /v1/author/{author_id}` — author details (param: `fields`)
+- `POST /v1/author/batch` — batch author details (JSON: `{ "ids": [ ... ] }`)
+- `GET /v1/recommendations?paper_id=...` — recommendations for a paper
+
+The bridge reuses the package's HTTP utilities (`semantic_scholar.utils.http`)
+so rate limits, API key handling and connection pooling remain consistent with
+the MCP tools.
+
+Example:
+
+```bash
+curl 'http://localhost:8000/v1/paper/search?q=machine+learning&limit=5'
+```
+
+
 ### Rate Limits
 
 The server automatically adjusts to the appropriate rate limits:

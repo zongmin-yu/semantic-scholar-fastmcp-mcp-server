@@ -2,17 +2,22 @@
 Main server module for the Semantic Scholar API Server.
 """
 
-import logging
 import asyncio
 import signal
+import uvicorn
 
 # Import mcp from centralized location
 from .mcp import mcp
 from .utils.http import initialize_client, cleanup_client
+from .utils.logger import logger
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
+# Event to keep process alive when FastMCP detaches
+stop_event = None
+# ASGI HTTP server instance and task (for the bridge)
+http_server = None
+http_server_task = None
 
 # Import API modules to register tools
 # Note: This must come AFTER mcp is initialized
@@ -39,7 +44,46 @@ async def shutdown():
     
     # Cleanup resources
     await cleanup_client()
-    await mcp.cleanup()
+    try:
+        cleanup_fn = getattr(mcp, "cleanup", None)
+        if cleanup_fn:
+            if asyncio.iscoroutinefunction(cleanup_fn):
+                await cleanup_fn()
+            else:
+                cleanup_fn()
+        else:
+            # Try common alternative names on FastMCP implementations
+            for name in ("shutdown", "stop", "close"):
+                fn = getattr(mcp, name, None)
+                if fn:
+                    if asyncio.iscoroutinefunction(fn):
+                        await fn()
+                    else:
+                        fn()
+                    break
+    except Exception as e:
+        logger.error(f"Error during mcp cleanup: {e}")
+    # Signal run_server to stop waiting
+    try:
+        global stop_event
+        if stop_event is not None and not stop_event.is_set():
+            stop_event.set()
+    except Exception:
+        pass
+
+    # Stop the HTTP bridge if running
+    try:
+        global http_server, http_server_task
+        if http_server is not None:
+            http_server.should_exit = True
+        if http_server_task is not None and not http_server_task.done():
+            http_server_task.cancel()
+            try:
+                await http_server_task
+            except asyncio.CancelledError:
+                pass
+    except Exception as e:
+        logger.error(f"Error stopping HTTP bridge: {e}")
     
     logger.info(f"Cancelled {len(tasks)} tasks")
     logger.info("Shutdown complete")
@@ -52,19 +96,50 @@ def init_signal_handlers(loop):
 
 async def run_server():
     """Run the server with proper async context management."""
-    async with mcp:
-        try:
-            # Initialize HTTP client
-            await initialize_client()
-            
-            # Start the server
-            logger.info("Starting Semantic Scholar Server")
-            await mcp.run_async()
-        except Exception as e:
-            logger.error(f"Server error: {e}")
-            raise
-        finally:
-            await shutdown()
+    try:
+        # Initialize HTTP client
+        await initialize_client()
+
+        # Start the server
+        logger.info("Starting Semantic Scholar Server")
+        task = asyncio.create_task(mcp.run_async())
+
+        # Start the HTTP bridge (ASGI) in the same process so the service
+        # exposes REST endpoints on port 8000. The `bridge.app` is a thin
+        # FastAPI application that reuses the package HTTP utilities.
+        from .bridge import app as bridge_app
+        config = uvicorn.Config(
+            app=bridge_app,
+            host="0.0.0.0",
+            port=8000,
+            log_level="info",
+            log_config=None,
+            ws="none"  # Disable WebSocket support to avoid deprecation warnings
+        )
+        server = uvicorn.Server(config=config)
+        global http_server, http_server_task
+        http_server = server
+        http_server_task = asyncio.create_task(server.serve())
+
+        # Create a stop event to keep the main coroutine alive if FastMCP detaches
+        global stop_event
+        if stop_event is None:
+            stop_event = asyncio.Event()
+
+        # Wait until shutdown() sets the event
+        await stop_event.wait()
+        # Ensure server task is cancelled/awaited on shutdown
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        raise
+    finally:
+        await shutdown()
 
 def main():
     """Main entry point for the server."""

@@ -9,5 +9,8 @@ pytest-asyncio>=0.21.0
 python-dotenv>=1.0.0
 
 # Server dependencies
-uvicorn>=0.27.1
-fastmcp>=0.1.0 
+# Pin fastmcp<3 for stability (recommended by fastmcp docs)
+# Use uvicorn with websockets disabled to avoid deprecation warnings
+fastmcp>=2.0.0,<3.0.0
+fastapi>=0.115.0
+uvicorn>=0.32.0

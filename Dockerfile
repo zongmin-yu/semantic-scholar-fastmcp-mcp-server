@@ -1,6 +1,11 @@
 # Start from a base Python image
-FROM python:3.8-slim
+FROM python:3.12-slim
 
+# For debugging purposes, install curl
+RUN apt update && apt install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+    
 # Set the working directory
 WORKDIR /app
 
