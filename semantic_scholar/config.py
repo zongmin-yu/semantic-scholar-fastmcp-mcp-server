@@ -13,12 +13,16 @@ class RateLimitConfig:
     # Define rate limits (requests, seconds)
     SEARCH_LIMIT = (1, 1)  # 1 request per 1 second
     BATCH_LIMIT = (1, 1)   # 1 request per 1 second
+    RECOMMENDATIONS_LIMIT = (1, 1)  # 1 request per 1 second
     DEFAULT_LIMIT = (10, 1)  # 10 requests per 1 second
+    UNAUTHENTICATED_LIMIT = (100, 300)  # 100 requests per 5 minutes
     
     # Endpoints categorization
     # These endpoints have stricter rate limits due to their computational intensity
     # and to prevent abuse of the recommendation system
     RESTRICTED_ENDPOINTS = [
+        "/author/batch",    # Batch operations are expensive
+        "/author/search",   # Search operations are computationally intensive
         "/paper/batch",     # Batch operations are expensive
         "/paper/search",    # Search operations are computationally intensive
         "/recommendations"  # Recommendation generation is resource-intensive
@@ -158,6 +162,7 @@ class Config:
     # API Configuration
     API_VERSION = "v1"
     BASE_URL = f"https://api.semanticscholar.org/graph/{API_VERSION}"
+    RECOMMENDATIONS_BASE_URL = "https://api.semanticscholar.org/recommendations/v1"
     TIMEOUT = int(os.getenv("SEMANTIC_SCHOLAR_TIMEOUT", "30"))  # seconds
     
     # Request Limits

@@ -3,6 +3,7 @@ Main server module for the Semantic Scholar API Server.
 """
 
 import asyncio
+import os
 import signal
 import uvicorn
 
@@ -105,21 +106,33 @@ async def run_server():
         task = asyncio.create_task(mcp.run_async())
 
         # Start the HTTP bridge (ASGI) in the same process so the service
-        # exposes REST endpoints on port 8000. The `bridge.app` is a thin
+        # exposes REST endpoints on a local port. The `bridge.app` is a thin
         # FastAPI application that reuses the package HTTP utilities.
-        from .bridge import app as bridge_app
-        config = uvicorn.Config(
-            app=bridge_app,
-            host="0.0.0.0",
-            port=8000,
-            log_level="info",
-            log_config=None,
-            ws="none"  # Disable WebSocket support to avoid deprecation warnings
+        enable_bridge = os.getenv("SEMANTIC_SCHOLAR_ENABLE_HTTP_BRIDGE", "1").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
         )
-        server = uvicorn.Server(config=config)
-        global http_server, http_server_task
-        http_server = server
-        http_server_task = asyncio.create_task(server.serve())
+        if enable_bridge:
+            bridge_host = os.getenv("SEMANTIC_SCHOLAR_HTTP_BRIDGE_HOST", "0.0.0.0").strip()
+            bridge_port = int(os.getenv("SEMANTIC_SCHOLAR_HTTP_BRIDGE_PORT", "8000"))
+            from .bridge import app as bridge_app
+            config = uvicorn.Config(
+                app=bridge_app,
+                host=bridge_host,
+                port=bridge_port,
+                log_level="info",
+                log_config=None,
+                ws="none"  # Disable WebSocket support to avoid deprecation warnings
+            )
+            server = uvicorn.Server(config=config)
+            global http_server, http_server_task
+            http_server = server
+            http_server_task = asyncio.create_task(server.serve())
+            logger.info("HTTP bridge enabled on %s:%s", bridge_host, bridge_port)
+        else:
+            logger.info("HTTP bridge disabled (SEMANTIC_SCHOLAR_ENABLE_HTTP_BRIDGE=0)")
 
         # Create a stop event to keep the main coroutine alive if FastMCP detaches
         global stop_event

@@ -3,7 +3,6 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 
 import semantic_scholar.bridge as bridge
-import semantic_scholar.utils.http as utils_http
 
 # Reuse sample IDs from other tests for consistency
 SAMPLE_PAPER_ID = "649def34f8be52c8b66281af98ae884c09aef38b"
@@ -51,27 +50,13 @@ async def test_paper_details_endpoint(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_paper_batch_endpoint(monkeypatch):
-    # fake http client with a post method
-    class FakeResp:
-        def __init__(self, status_code, data):
-            self.status_code = status_code
-            self._data = data
-            self.text = str(data)
+    async def fake_make_request(endpoint, params=None, api_key_override=None, method="GET", json=None, base_url=None):
+        assert endpoint == "/paper/batch"
+        assert method.upper() == "POST"
+        assert isinstance(json, dict) and "ids" in json
+        return [{"paperId": pid} for pid in json["ids"]]
 
-        def raise_for_status(self):
-            if self.status_code >= 400:
-                raise Exception("HTTP error")
-
-        def json(self):
-            return self._data
-
-    class FakeClient:
-        async def post(self, url, json=None, params=None, headers=None):
-            assert isinstance(json, dict) and "ids" in json
-            return FakeResp(200, [{"paperId": pid} for pid in json["ids"]])
-
-    # set the http_client in the utils module used by the bridge
-    monkeypatch.setattr(utils_http, "http_client", FakeClient())
+    monkeypatch.setattr(bridge, "make_request", fake_make_request)
     transport = ASGITransport(app=bridge.app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         r = await ac.post("/v1/paper/batch", json={"ids": SAMPLE_PAPER_IDS})

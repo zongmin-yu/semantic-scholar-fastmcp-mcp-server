@@ -4,12 +4,11 @@ Recommendation-related API endpoints for the Semantic Scholar API.
 
 from typing import Dict, List, Optional
 from fastmcp import Context
-import httpx
 
 # Import mcp from centralized location instead of server
 from ..mcp import mcp
 from ..config import Config, ErrorType
-from ..utils.http import rate_limiter, get_api_key
+from ..utils.http import make_request
 from ..utils.logger import logger
 from ..utils.errors import create_error_response
 
@@ -56,10 +55,6 @@ async def get_paper_recommendations_single(
         }
     """
     try:
-        # Apply rate limiting
-        endpoint = "/recommendations"
-        await rate_limiter.acquire(endpoint)
-
         # Validate limit
         if limit > 500:
             return create_error_response(
@@ -84,52 +79,20 @@ async def get_paper_recommendations_single(
         if fields:
             params["fields"] = fields
 
-        # Make the API request
-        async with httpx.AsyncClient(timeout=Config.TIMEOUT) as client:
-            api_key = get_api_key()
-            headers = {"x-api-key": api_key} if api_key else {}
-            
-            url = f"https://api.semanticscholar.org/recommendations/v1/papers/forpaper/{paper_id}"
-            logger.debug(
-                "Semantic Scholar request: method=%s url=%s params=%s headers=%s",
-                "GET",
-                url,
-                params,
-                headers
-            )
-            response = await client.get(url, params=params, headers=headers)
-            
-            # Handle specific error cases
-            if response.status_code == 404:
+        result = await make_request(
+            f"/papers/forpaper/{paper_id}",
+            params=params,
+            base_url=Config.RECOMMENDATIONS_BASE_URL,
+        )
+        if isinstance(result, dict) and "error" in result:
+            status = result["error"].get("details", {}).get("status_code")
+            if status == 404:
                 return create_error_response(
                     ErrorType.VALIDATION,
                     "Paper not found",
                     {"paper_id": paper_id}
                 )
-            
-            response.raise_for_status()
-            return response.json()
-
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 429:
-            return create_error_response(
-                ErrorType.RATE_LIMIT,
-                "Rate limit exceeded. Consider using an API key for higher limits.",
-                {
-                    "retry_after": e.response.headers.get("retry-after"),
-                    "authenticated": bool(get_api_key())
-                }
-            )
-        return create_error_response(
-            ErrorType.API_ERROR,
-            f"HTTP error {e.response.status_code}",
-            {"response": e.response.text}
-        )
-    except httpx.TimeoutException:
-        return create_error_response(
-            ErrorType.TIMEOUT,
-            f"Request timed out after {Config.TIMEOUT} seconds"
-        )
+        return result
     except Exception as e:
         logger.error(f"Unexpected error in recommendations: {str(e)}")
         return create_error_response(
@@ -182,10 +145,6 @@ async def get_paper_recommendations_multi(
         }
     """
     try:
-        # Apply rate limiting
-        endpoint = "/recommendations"
-        await rate_limiter.acquire(endpoint)
-
         # Validate inputs
         if not positive_paper_ids:
             return create_error_response(
@@ -210,24 +169,16 @@ async def get_paper_recommendations_multi(
             "negativePaperIds": negative_paper_ids or []
         }
 
-        # Make the API request
-        async with httpx.AsyncClient(timeout=Config.TIMEOUT) as client:
-            api_key = get_api_key()
-            headers = {"x-api-key": api_key} if api_key else {}
-            
-            url = "https://api.semanticscholar.org/recommendations/v1/papers"
-            logger.debug(
-                "Semantic Scholar request: method=%s url=%s params=%s headers=%s",
-                "POST",
-                url,
-                params,
-                headers
-            )
-            logger.debug("Semantic Scholar request body: %s", request_body)
-            response = await client.post(url, params=params, json=request_body, headers=headers)
-            
-            # Handle specific error cases
-            if response.status_code == 404:
+        result = await make_request(
+            "/papers",
+            params=params,
+            method="POST",
+            json=request_body,
+            base_url=Config.RECOMMENDATIONS_BASE_URL,
+        )
+        if isinstance(result, dict) and "error" in result:
+            status = result["error"].get("details", {}).get("status_code")
+            if status == 404:
                 return create_error_response(
                     ErrorType.VALIDATION,
                     "One or more input papers not found",
@@ -236,30 +187,7 @@ async def get_paper_recommendations_multi(
                         "negative_ids": negative_paper_ids
                     }
                 )
-            
-            response.raise_for_status()
-            return response.json()
-
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 429:
-            return create_error_response(
-                ErrorType.RATE_LIMIT,
-                "Rate limit exceeded. Consider using an API key for higher limits.",
-                {
-                    "retry_after": e.response.headers.get("retry-after"),
-                    "authenticated": bool(get_api_key())
-                }
-            )
-        return create_error_response(
-            ErrorType.API_ERROR,
-            f"HTTP error {e.response.status_code}",
-            {"response": e.response.text}
-        )
-    except httpx.TimeoutException:
-        return create_error_response(
-            ErrorType.TIMEOUT,
-            f"Request timed out after {Config.TIMEOUT} seconds"
-        )
+        return result
     except Exception as e:
         logger.error(f"Unexpected error in recommendations: {str(e)}")
         return create_error_response(

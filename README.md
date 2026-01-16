@@ -150,6 +150,12 @@ exposes a minimal REST API for common workflows.
 
 Default listening port: `8000`.
 
+Bridge configuration via environment variables:
+
+- `SEMANTIC_SCHOLAR_ENABLE_HTTP_BRIDGE` (default: `1`) — set to `0` to disable
+- `SEMANTIC_SCHOLAR_HTTP_BRIDGE_HOST` (default: `0.0.0.0`)
+- `SEMANTIC_SCHOLAR_HTTP_BRIDGE_PORT` (default: `8000`)
+
 Available endpoints:
 
 - `GET /v1/paper/search?q=...` — paper search (params: `fields`, `offset`, `limit`)
