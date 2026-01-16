@@ -10,8 +10,8 @@ class TestRecommendationTools(unittest.TestCase):
         """Set up test environment"""
         # API key is required for recommendations
         api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
-        if not api_key:
-            raise ValueError("SEMANTIC_SCHOLAR_API_KEY environment variable is required for recommendation tests")
+        if not api_key or api_key.strip().lower() in ("", "none", "null", "false"):
+            self.skipTest("SEMANTIC_SCHOLAR_API_KEY is required for recommendation tests")
         
         # Create event loop for async tests
         self.loop = asyncio.new_event_loop()

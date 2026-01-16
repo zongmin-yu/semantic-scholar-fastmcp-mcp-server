@@ -6,54 +6,98 @@ import os
 import httpx
 import asyncio
 import time
-from typing import Dict, Optional, Tuple, Any
+from collections import deque
+from typing import Awaitable, Callable, Deque, Dict, Optional, Tuple, Any
 
 from ..config import Config, ErrorType, RateLimitConfig
 from .errors import create_error_response
 from .logger import logger
 
 # Global HTTP client for connection pooling
-http_client = None
+http_client: Optional[httpx.AsyncClient] = None
 
 class RateLimiter:
     """
     Rate limiter for API requests to prevent exceeding API limits.
     """
-    def __init__(self):
-        self._last_call_time = {}
-        self._locks = {}
+    def __init__(
+        self,
+        *,
+        clock: Optional[Callable[[], float]] = None,
+        sleeper: Optional[Callable[[float], Awaitable[Any]]] = None,
+    ):
+        self._clock = clock or time.monotonic
+        self._sleep = sleeper or asyncio.sleep
+        self._events: Dict[str, Deque[float]] = {}
+        self._locks: Dict[str, asyncio.Lock] = {}
 
-    def _get_rate_limit(self, endpoint: str) -> Tuple[int, int]:
+    def _bucket_key(self, endpoint: str, base_url: Optional[str] = None) -> str:
+        """
+        Map a concrete request path to a stable rate-limiting bucket.
+
+        Many endpoints include IDs (e.g. /paper/{id}) which would otherwise
+        defeat throttling if used as-is.
+        """
+        if base_url and "recommendations" in base_url:
+            return "/recommendations"
+        if "recommendations" in endpoint:
+            return "/recommendations"
+        if "/author/search" in endpoint:
+            return "/author/search"
+        if "/paper/search" in endpoint:
+            return "/paper/search"
+        if "/paper/batch" in endpoint:
+            return "/paper/batch"
+        if "/author/batch" in endpoint:
+            return "/author/batch"
+        return "/default"
+
+    def _get_rate_limit(self, endpoint: str, *, authenticated: bool) -> Tuple[int, int]:
         """Get the appropriate rate limit for an endpoint."""
+        if not authenticated:
+            return RateLimitConfig.UNAUTHENTICATED_LIMIT
         if any(restricted in endpoint for restricted in RateLimitConfig.RESTRICTED_ENDPOINTS):
             if "batch" in endpoint:
                 return RateLimitConfig.BATCH_LIMIT
             if "search" in endpoint:
                 return RateLimitConfig.SEARCH_LIMIT
-            return RateLimitConfig.DEFAULT_LIMIT
+            if "recommendations" in endpoint:
+                return RateLimitConfig.RECOMMENDATIONS_LIMIT
+            return RateLimitConfig.SEARCH_LIMIT
         return RateLimitConfig.DEFAULT_LIMIT
 
-    async def acquire(self, endpoint: str):
+    async def acquire(self, endpoint: str, *, authenticated: bool = True, base_url: Optional[str] = None):
         """
         Acquire permission to make a request, waiting if necessary to respect rate limits.
         
         Args:
             endpoint: The API endpoint being accessed.
         """
-        if endpoint not in self._locks:
-            self._locks[endpoint] = asyncio.Lock()
-            self._last_call_time[endpoint] = 0
+        bucket = self._bucket_key(endpoint, base_url)
+        if bucket not in self._locks:
+            self._locks[bucket] = asyncio.Lock()
+            self._events[bucket] = deque()
 
-        async with self._locks[endpoint]:
-            rate_limit = self._get_rate_limit(endpoint)
-            current_time = time.time()
-            time_since_last_call = current_time - self._last_call_time[endpoint]
-            
-            if time_since_last_call < rate_limit[1]:
-                delay = rate_limit[1] - time_since_last_call
-                await asyncio.sleep(delay)
-            
-            self._last_call_time[endpoint] = time.time()
+        async with self._locks[bucket]:
+            limit_endpoint = bucket if bucket != "/default" else endpoint
+            requests, seconds = self._get_rate_limit(limit_endpoint, authenticated=authenticated)
+            if requests <= 0 or seconds <= 0:
+                return
+
+            events = self._events[bucket]
+            while True:
+                now = self._clock()
+                cutoff = now - float(seconds)
+                while events and events[0] <= cutoff:
+                    events.popleft()
+
+                if len(events) < int(requests):
+                    events.append(now)
+                    return
+
+                delay = (events[0] + float(seconds)) - now
+                if delay > 0:
+                    await self._sleep(delay)
 
 # Create global rate limiter instance
 rate_limiter = RateLimiter()
@@ -92,22 +136,37 @@ async def cleanup_client():
         await http_client.aclose()
         http_client = None
 
-async def make_request(endpoint: str, params: Dict = None, api_key_override: Optional[str] = None) -> Dict:
+def _redact_headers(headers: Dict[str, str]) -> Dict[str, str]:
+    redacted = dict(headers or {})
+    for key in ("x-api-key", "authorization", "proxy-authorization"):
+        if key in redacted and redacted[key]:
+            redacted[key] = "***"
+    return redacted
+
+
+async def make_request(
+    endpoint: str,
+    params: Optional[Dict[str, Any]] = None,
+    api_key_override: Optional[str] = None,
+    method: str = "GET",
+    json: Any = None,
+    base_url: Optional[str] = None,
+) -> Any:
     """
     Make a rate-limited request to the Semantic Scholar API.
     
     Args:
-        endpoint: The API endpoint to call.
+        endpoint: The API endpoint to call (e.g. "/paper/search") or an absolute URL.
         params: Optional query parameters.
+        api_key_override: Optional API key, typically extracted from an incoming bearer token.
+        method: HTTP method to use ("GET", "POST", ...).
+        json: Optional JSON body for POST/PUT.
+        base_url: Override base URL (e.g. recommendations API).
         
     Returns:
         The JSON response or an error response dictionary.
     """
     try:
-        # Apply rate limiting
-        await rate_limiter.acquire(endpoint)
-
-        # Get API key: prefer override (from incoming request) over env
         def _normalize_key(k: Optional[str]) -> Optional[str]:
             if not k:
                 return None
@@ -117,6 +176,11 @@ async def make_request(endpoint: str, params: Dict = None, api_key_override: Opt
             return nk
 
         api_key = _normalize_key(api_key_override) or _normalize_key(get_api_key())
+        authenticated = bool(api_key)
+
+        # Apply rate limiting (after we know whether we are authenticated)
+        await rate_limiter.acquire(endpoint, authenticated=authenticated, base_url=base_url)
+
         if api_key:
             headers = {"x-api-key": api_key}
         else:
@@ -124,25 +188,28 @@ async def make_request(endpoint: str, params: Dict = None, api_key_override: Opt
             logger.debug("Not sending x-api-key header (no valid API key available)")
         # Add a sensible User-Agent to avoid being blocked by some servers
         headers.setdefault("User-Agent", "semantic-scholar-mcp/1.0 (+https://github.com)")
-        url = f"{Config.BASE_URL}{endpoint}"
+        if endpoint.startswith("http://") or endpoint.startswith("https://"):
+            url = endpoint
+        else:
+            url = f"{base_url or Config.BASE_URL}{endpoint}"
 
         # Use global client
         client = await initialize_client()
         logger.debug(
             "Semantic Scholar request: method=%s url=%s params=%s headers=%s",
-            "GET",
+            method,
             url,
             params,
-            headers
+            _redact_headers(headers)
         )
-        response = await client.get(url, params=params, headers=headers)
+        response = await client.request(method.upper(), url, params=params, headers=headers, json=json)
         response.raise_for_status()
         return response.json()
     except httpx.HTTPStatusError as e:
         # Log request details to help debug 403/forbidden responses
         try:
             logger.error(f"HTTP error {e.response.status_code} for {url}: {e.response.text}")
-            logger.error(f"Request headers: {headers}")
+            logger.error(f"Request headers: {_redact_headers(headers)}")
             logger.error(f"Request params: {params}")
         except Exception:
             logger.exception("Failed to log request details")
@@ -151,14 +218,15 @@ async def make_request(endpoint: str, params: Dict = None, api_key_override: Opt
                 ErrorType.RATE_LIMIT,
                 "Rate limit exceeded. Consider using an API key for higher limits.",
                 {
+                    "status_code": e.response.status_code,
                     "retry_after": e.response.headers.get("retry-after"),
-                    "authenticated": bool(get_api_key())
+                    "authenticated": authenticated,
                 }
             )
         return create_error_response(
             ErrorType.API_ERROR,
             f"HTTP error: {e.response.status_code}",
-            {"response": e.response.text}
+            {"status_code": e.response.status_code, "response": e.response.text}
         )
     except httpx.TimeoutException as e:
         logger.error(f"Request timeout for {endpoint}: {str(e)}")

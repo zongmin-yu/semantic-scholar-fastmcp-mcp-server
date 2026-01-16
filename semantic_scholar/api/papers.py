@@ -4,12 +4,11 @@ Paper-related API endpoints for the Semantic Scholar API.
 
 from typing import Dict, List, Optional
 from fastmcp import Context
-import httpx
 
 # Import mcp from centralized location instead of server
 from ..mcp import mcp
-from ..config import PaperFields, CitationReferenceFields, AuthorDetailFields, Config, ErrorType
-from ..utils.http import make_request, get_api_key
+from ..config import PaperFields, CitationReferenceFields, AuthorDetailFields, ErrorType
+from ..utils.http import make_request
 from ..utils.logger import logger
 from ..utils.errors import create_error_response
 
@@ -509,52 +508,7 @@ async def paper_batch_details(
     if fields:
         params["fields"] = fields
 
-    # Make POST request with proper structure
-    try:
-        async with httpx.AsyncClient(timeout=Config.TIMEOUT) as client:
-            api_key = get_api_key()
-            headers = {"x-api-key": api_key} if api_key else {}
-
-            url = f"{Config.BASE_URL}/paper/batch"
-            logger.debug(
-                "Semantic Scholar request: method=%s url=%s params=%s headers=%s",
-                "POST",
-                url,
-                params,
-                headers
-            )
-            logger.debug("Semantic Scholar request body: %s", {"ids": paper_ids})
-            response = await client.post(
-                url,
-                params=params,
-                json={"ids": paper_ids},
-                headers=headers
-            )
-            response.raise_for_status()
-            return response.json()
-            
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 429:
-            return create_error_response(
-                ErrorType.RATE_LIMIT,
-                "Rate limit exceeded",
-                {"retry_after": e.response.headers.get("retry-after")}
-            )
-        return create_error_response(
-            ErrorType.API_ERROR,
-            f"HTTP error: {e.response.status_code}",
-            {"response": e.response.text}
-        )
-    except httpx.TimeoutException:
-        return create_error_response(
-            ErrorType.TIMEOUT,
-            f"Request timed out after {Config.TIMEOUT} seconds"
-        )
-    except Exception as e:
-        return create_error_response(
-            ErrorType.API_ERROR,
-            str(e)
-        )
+    return await make_request("/paper/batch", params=params, method="POST", json={"ids": paper_ids})
 
 @mcp.tool()
 async def paper_authors(
