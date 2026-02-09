@@ -772,4 +772,122 @@ async def paper_references(
             )
         return result
 
-    return result 
+    return result
+
+
+@mcp.tool()
+async def paper_autocomplete(
+    context: Context,
+    query: str,
+) -> Dict:
+    """
+    Get autocomplete suggestions for a partial paper query.
+    Returns minimal paper information for interactive query completion.
+
+    Args:
+        query (str): Partial text query to autocomplete. Truncated to 100 characters.
+            No special query syntax is supported.
+
+    Returns:
+        Dict: Autocomplete suggestions with minimal paper data.
+    """
+    if not query.strip():
+        return create_error_response(
+            ErrorType.VALIDATION,
+            "Query string cannot be empty"
+        )
+
+    params = {"query": query[:100]}
+    return await make_request("/paper/autocomplete", params)
+
+
+@mcp.tool()
+async def snippet_search(
+    context: Context,
+    query: str,
+    fields: Optional[List[str]] = None,
+    limit: int = 10,
+    paper_ids: Optional[List[str]] = None,
+    authors: Optional[List[str]] = None,
+    min_citation_count: Optional[int] = None,
+    inserted_before: Optional[str] = None,
+    publication_date_or_year: Optional[str] = None,
+    year: Optional[str] = None,
+    venue: Optional[List[str]] = None,
+    fields_of_study: Optional[List[str]] = None,
+) -> Dict:
+    """
+    Search for text snippets within papers. Returns ~500 word excerpts from
+    paper titles, abstracts, and body text that best match the query.
+    Excludes figure captions and bibliographies.
+
+    Args:
+        query (str): Plain-text search query. No special syntax supported.
+
+        fields (Optional[List[str]]): Snippet fields to return (e.g. snippet.text,
+            snippet.snippetKind).
+
+        limit (int): Maximum results to return.
+            Default: 10
+            Maximum: 1000
+
+        paper_ids (Optional[List[str]]): Restrict search to these paper IDs (max ~100).
+            Supports all paper ID formats (S2 ID, DOI, ARXIV, etc.).
+
+        authors (Optional[List[str]]): Filter by author names with fuzzy matching.
+            Max 10 authors, combined with AND logic.
+
+        min_citation_count (Optional[int]): Minimum citation threshold.
+
+        inserted_before (Optional[str]): Only papers indexed before this date.
+            Format: YYYY-MM-DD, YYYY-MM, or YYYY.
+
+        publication_date_or_year (Optional[str]): Date range filter.
+            Format: <start>:<end> in YYYY-MM-DD.
+
+        year (Optional[str]): Publication year filter.
+            Examples: "2019", "2016-2020", "2010-", "-2015"
+
+        venue (Optional[List[str]]): Filter by publication venues or ISO4 abbreviations.
+
+        fields_of_study (Optional[List[str]]): Filter by academic fields of study.
+
+    Returns:
+        Dict: Matching snippets ranked by relevance, including text, metadata,
+            paper info (corpusId, title, authors), and relevance score.
+    """
+    if not query.strip():
+        return create_error_response(
+            ErrorType.VALIDATION,
+            "Query string cannot be empty"
+        )
+
+    if limit > 1000:
+        return create_error_response(
+            ErrorType.VALIDATION,
+            "Limit cannot exceed 1000",
+            {"max_limit": 1000}
+        )
+
+    params = {"query": query, "limit": limit}
+
+    if fields:
+        params["fields"] = ",".join(fields)
+    if paper_ids:
+        params["paperIds"] = ",".join(paper_ids)
+    if authors:
+        params["authors"] = ",".join(authors)
+    if min_citation_count is not None:
+        params["minCitationCount"] = min_citation_count
+    if inserted_before:
+        params["insertedBefore"] = inserted_before
+    if publication_date_or_year:
+        params["publicationDateOrYear"] = publication_date_or_year
+    if year:
+        params["year"] = year
+    if venue:
+        params["venue"] = ",".join(venue)
+    if fields_of_study:
+        params["fieldsOfStudy"] = ",".join(fields_of_study)
+
+    return await make_request("/snippet/search", params)
