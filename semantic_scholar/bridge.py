@@ -28,6 +28,7 @@ Endpoints
 - GET  /v1/recommendations?paper_id=...  -> recommendations (proxy)
 
 """
+from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
@@ -35,17 +36,19 @@ from pydantic import BaseModel
 from .utils.http import make_request, initialize_client
 from .config import Config, AuthorDetailFields, PaperFields, PaperDetailFields, CitationReferenceFields
 
-app = FastAPI(title="Semantic Scholar Bridge", version="0.1")
-
 
 class IdList(BaseModel):
     ids: List[str]
 
 
-@app.on_event("startup")
-async def _startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     # ensure the shared http client is initialized
     await initialize_client()
+    yield
+
+
+app = FastAPI(title="Semantic Scholar Bridge", version="0.1", lifespan=lifespan)
 
 def _bearer_token(request: Request) -> Optional[str]:
     auth = request.headers.get("authorization")
@@ -121,5 +124,10 @@ async def recommendations(request: Request, paper_id: Optional[str] = None, fiel
         raise HTTPException(status_code=400, detail="paper_id is required")
     params = {"fields": fields} if fields else {"fields": ",".join(PaperFields.DEFAULT)}
     token = _bearer_token(request)
-    result = await make_request(f"/paper/{paper_id}/recommendations", params=params, api_key_override=token)
+    result = await make_request(
+        f"/papers/forpaper/{paper_id}",
+        params=params,
+        api_key_override=token,
+        base_url=Config.RECOMMENDATIONS_BASE_URL,
+    )
     return result

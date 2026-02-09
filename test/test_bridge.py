@@ -73,7 +73,7 @@ async def test_author_endpoints_and_recommendations(monkeypatch):
             return {"data": [], "total": 0}
         if endpoint.startswith("/author/") and "batch" not in endpoint:
             return {"authorId": SAMPLE_AUTHOR_ID, "name": "A. Author"}
-        if endpoint.startswith("/paper/") and endpoint.endswith("/recommendations"):
+        if endpoint.startswith("/papers/forpaper/"):
             return {"recommendations": []}
         return {}
 
