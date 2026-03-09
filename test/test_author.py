@@ -1,16 +1,19 @@
 import unittest
 import asyncio
 import os
-from typing import Optional, List, Dict
 
 from .test_utils import make_request, create_error_response, ErrorType, Config
 
 class TestAuthorTools(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """Skip live API tests when no key is configured."""
+        api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
+        if not api_key or api_key.strip().lower() in ("", "none", "null", "false"):
+            raise unittest.SkipTest("SEMANTIC_SCHOLAR_API_KEY is required for author integration tests")
+
     def setUp(self):
         """Set up test environment"""
-        # You can set your API key here for testing
-        os.environ["SEMANTIC_SCHOLAR_API_KEY"] = ""  # Optional
-        
         # Create event loop for async tests
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
