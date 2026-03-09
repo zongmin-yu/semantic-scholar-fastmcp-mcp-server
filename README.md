@@ -195,7 +195,16 @@ The server automatically adjusts to the appropriate rate limits:
 - All endpoints: 100 requests per 5 minutes
 - Longer timeouts for requests
 
+> Note: Rate limits are subject to change. See [Semantic Scholar API](https://api.semanticscholar.org/) for the latest information.
+
+## Semantic Scholar API Terms
+
+This project uses the [Semantic Scholar Academic Graph API](https://api.semanticscholar.org/), provided by the Allen Institute for AI (AI2).
+Please review the [API License Agreement](https://api.semanticscholar.org/license/) before use.
+
 ## Available MCP Tools
+
+The server currently exposes 16 MCP tools.
 
 > Note: All tools are aligned with the official [Semantic Scholar API documentation](https://api.semanticscholar.org/api-docs/). Please refer to the official documentation for detailed field specifications and the latest updates.
 
@@ -224,6 +233,11 @@ The server automatically adjusts to the appropriate rate limits:
 - `paper_batch_details`: Efficiently retrieve details for multiple papers
   - Accepts up to 1000 paper IDs per request
   - Supports the same ID formats and fields as single paper details
+
+- `paper_authors`: Get the authors associated with a specific paper
+
+  - Returns paginated author results for the paper
+  - Supports author field customization with offset and limit controls
 
 - `paper_autocomplete`: Get paper title suggestions for a partial query
   - Returns minimal paper metadata for interactive search completion
