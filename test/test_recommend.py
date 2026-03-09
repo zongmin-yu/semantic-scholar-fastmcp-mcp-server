@@ -2,8 +2,11 @@ import unittest
 import asyncio
 import os
 from typing import Optional, List, Dict
+import pytest
 
 from .test_utils import make_request, create_error_response, ErrorType, Config
+
+pytestmark = pytest.mark.live
 
 class TestRecommendationTools(unittest.TestCase):
     def setUp(self):

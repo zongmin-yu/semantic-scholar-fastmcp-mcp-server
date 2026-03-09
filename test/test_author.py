@@ -1,16 +1,15 @@
 import unittest
 import asyncio
-import os
 from typing import Optional, List, Dict
+import pytest
 
 from .test_utils import make_request, create_error_response, ErrorType, Config
+
+pytestmark = pytest.mark.live
 
 class TestAuthorTools(unittest.TestCase):
     def setUp(self):
         """Set up test environment"""
-        # You can set your API key here for testing
-        os.environ["SEMANTIC_SCHOLAR_API_KEY"] = ""  # Optional
-        
         # Create event loop for async tests
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
