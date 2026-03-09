@@ -225,6 +225,14 @@ The server automatically adjusts to the appropriate rate limits:
   - Accepts up to 1000 paper IDs per request
   - Supports the same ID formats and fields as single paper details
 
+- `paper_autocomplete`: Get paper title suggestions for a partial query
+  - Returns minimal paper metadata for interactive search completion
+  - Truncates overly long queries to the API-supported length
+
+- `snippet_search`: Search within paper snippets and excerpts
+  - Returns relevant text matches from titles, abstracts, and body text
+  - Supports filters for paper IDs, authors, venue, year, and field of study
+
 ### Citation Tools
 
 - `paper_citations`: Get papers that cite a specific paper
@@ -261,12 +269,12 @@ The server automatically adjusts to the appropriate rate limits:
 
 ### Recommendation Tools
 
-- `paper_recommendations_single`: Get recommendations based on a single paper
+- `get_paper_recommendations_single`: Get recommendations based on a single paper
 
   - Returns similar papers based on content and citation patterns
   - Supports field customization for recommended papers
 
-- `paper_recommendations_multi`: Get recommendations based on multiple papers
+- `get_paper_recommendations_multi`: Get recommendations based on multiple papers
   - Accepts positive and negative example papers
   - Returns papers similar to positive examples and dissimilar to negative ones
 
@@ -288,14 +296,14 @@ results = await paper_relevance_search(
 
 ```python
 # Single paper recommendation
-recommendations = await paper_recommendations_single(
+recommendations = await get_paper_recommendations_single(
     context,
     paper_id="649def34f8be52c8b66281af98ae884c09aef38b",
     fields="title,authors,year"
 )
 
 # Multi-paper recommendation
-recommendations = await paper_recommendations_multi(
+recommendations = await get_paper_recommendations_multi(
     context,
     positive_paper_ids=["649def34f8be52c8b66281af98ae884c09aef38b", "ARXIV:2106.15928"],
     negative_paper_ids=["ArXiv:1805.02262"],

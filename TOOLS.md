@@ -61,6 +61,30 @@ Get details for multiple papers in one request.
 }
 ```
 
+### `paper_autocomplete`
+
+Get autocomplete suggestions for a partial paper query.
+
+```json
+{
+  "query": "large language mod"
+}
+```
+
+### `snippet_search`
+
+Search for matching snippets across paper content.
+
+```json
+{
+  "query": "transformer attention",
+  "fields": ["snippet.text", "paper.title"],
+  "limit": 5,
+  "authors": ["Ashish Vaswani"],
+  "paper_ids": ["649def34f8be52c8b66281af98ae884c09aef38b"]
+}
+```
+
 ### `paper_authors`
 
 Get the authors of a specific paper.
