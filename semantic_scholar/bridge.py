@@ -33,7 +33,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
-from .utils.http import make_request, initialize_client
+from .utils.http import cleanup_client, make_request, initialize_client
 from .config import Config, AuthorDetailFields, PaperFields, PaperDetailFields, CitationReferenceFields
 
 
@@ -45,7 +45,10 @@ class IdList(BaseModel):
 async def lifespan(app: FastAPI):
     # ensure the shared http client is initialized
     await initialize_client()
-    yield
+    try:
+        yield
+    finally:
+        await cleanup_client()
 
 
 app = FastAPI(title="Semantic Scholar Bridge", version="0.1", lifespan=lifespan)

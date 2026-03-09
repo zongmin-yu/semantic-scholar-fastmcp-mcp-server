@@ -47,6 +47,7 @@ class PaperFields:
         "abstract",
         "authors",
         "citationCount",
+        "citationStyles",
         "citations",
         "corpusId",
         "embedding",
@@ -63,6 +64,7 @@ class PaperFields:
         "referenceCount",
         "references",
         "s2FieldsOfStudy",
+        "textAvailability",
         "title",
         "tldr",
         "url",
@@ -94,20 +96,21 @@ class AuthorDetailFields:
 
     # Valid fields for author details
     VALID_FIELDS = {
+        "affiliations",
         "authorId",
+        "citationCount",
+        "externalIds",
+        "hIndex",
         "homepage",
         "name",
-        "url",
-        "affiliations",
+        "paperCount",
         "papers",
-        "papers.year",
-        "papers.authors",
         "papers.abstract",
+        "papers.authors",
         "papers.venue",
         "papers.url",
-        "citationCount",
-        "hIndex",
-        "paperCount"
+        "papers.year",
+        "url",
     }
 
 class PaperDetailFields:

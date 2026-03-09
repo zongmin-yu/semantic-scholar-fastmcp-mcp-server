@@ -868,6 +868,24 @@ async def snippet_search(
             "Limit cannot exceed 1000",
             {"max_limit": 1000}
         )
+    if limit < 1:
+        return create_error_response(
+            ErrorType.VALIDATION,
+            "Limit must be at least 1",
+            {"min_limit": 1}
+        )
+    if authors and len(authors) > 10:
+        return create_error_response(
+            ErrorType.VALIDATION,
+            "Cannot filter by more than 10 authors",
+            {"max_authors": 10}
+        )
+    if paper_ids and len(paper_ids) > 100:
+        return create_error_response(
+            ErrorType.VALIDATION,
+            "Cannot filter by more than 100 paper IDs",
+            {"max_paper_ids": 100}
+        )
 
     params = {"query": query, "limit": limit}
 

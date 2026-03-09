@@ -14,4 +14,4 @@ startCommand:
   commandFunction:
     # A function that produces the CLI command to start the MCP on stdio.
     |-
-    (config) => ({command:'python',args:['semantic_scholar_server.py'],env:{SEMANTIC_SCHOLAR_API_KEY:config.semanticScholarApiKey || ''}})
+    (config) => ({command:'python',args:['run.py'],env:{SEMANTIC_SCHOLAR_API_KEY:config.semanticScholarApiKey || ''}})
