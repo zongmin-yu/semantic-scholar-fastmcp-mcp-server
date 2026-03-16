@@ -6,6 +6,8 @@
 
 A FastMCP server implementation for the Semantic Scholar API, providing comprehensive access to academic paper data, author information, and citation networks.
 
+> **Looking for Claude Code skills?** Check out [semantic-scholar-skills](https://github.com/zongmin-yu/semantic-scholar-skills) — the next-generation toolkit that bundles this MCP server with ready-to-use Claude Code skills (`/expand-references`, `/trace-citations`, `/paper-triage`) and a Python workflow engine.
+
 ## Project Structure
 
 The project has been refactored into a modular structure for better maintainability:
