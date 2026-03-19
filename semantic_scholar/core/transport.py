@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import random
 import time
 from collections import deque
 from typing import Any, Awaitable, Callable, Deque, Dict, Optional, Tuple
@@ -231,6 +232,9 @@ def error_dict_to_exception(
 
 
 class S2Transport:
+    MAX_RETRIES = 3
+    BASE_BACKOFF = 1.0  # seconds
+
     async def request_json(
         self,
         endpoint: str,
@@ -262,75 +266,109 @@ class S2Transport:
         else:
             url = f"{base_url or Config.BASE_URL}{endpoint}"
 
-        try:
-            client = await initialize_client()
-            logger.debug(
-                "Semantic Scholar request: method=%s url=%s params=%s headers=%s",
-                method,
-                url,
-                params,
-                _redact_headers(headers),
-            )
-            response = await client.request(method.upper(), url, params=params, headers=headers, json=json)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as exc:
-            try:
-                logger.error("HTTP error %s for %s: %s", exc.response.status_code, url, exc.response.text)
-                logger.error("Request headers: %s", _redact_headers(headers))
-                logger.error("Request params: %s", params)
-            except Exception:
-                logger.exception("Failed to log request details")
+        last_rate_limit_exc: Optional[S2RateLimitError] = None
 
-            status_code = exc.response.status_code
-            response_text = exc.response.text
-            if status_code == 429:
-                raise S2RateLimitError(
-                    message="Rate limit exceeded. Consider using an API key for higher limits.",
+        for attempt in range(self.MAX_RETRIES + 1):
+            try:
+                client = await initialize_client()
+                logger.debug(
+                    "Semantic Scholar request: method=%s url=%s params=%s headers=%s",
+                    method,
+                    url,
+                    params,
+                    _redact_headers(headers),
+                )
+                response = await client.request(method.upper(), url, params=params, headers=headers, json=json)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                try:
+                    logger.error("HTTP error %s for %s: %s", exc.response.status_code, url, exc.response.text)
+                    logger.error("Request headers: %s", _redact_headers(headers))
+                    logger.error("Request params: %s", params)
+                except Exception:
+                    logger.exception("Failed to log request details")
+
+                status_code = exc.response.status_code
+                response_text = exc.response.text
+
+                if status_code == 429:
+                    retry_after = exc.response.headers.get("retry-after")
+                    last_rate_limit_exc = S2RateLimitError(
+                        message="Rate limit exceeded. Consider using an API key for higher limits.",
+                        details={},
+                        status_code=429,
+                        endpoint=endpoint,
+                        method=method,
+                        params=params,
+                        json_body=json,
+                        base_url=base_url,
+                        response_text=response_text,
+                        retry_after=retry_after,
+                        authenticated=authenticated,
+                    )
+                    last_rate_limit_exc.__cause__ = exc
+
+                    if attempt < self.MAX_RETRIES:
+                        delay = self._backoff_delay(attempt, retry_after)
+                        logger.warning(
+                            "Rate limited (429) on %s, retrying in %.1fs (attempt %d/%d)",
+                            endpoint, delay, attempt + 1, self.MAX_RETRIES,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+
+                    raise last_rate_limit_exc from exc
+
+                error_cls = S2NotFoundError if status_code == 404 else S2ApiError
+                raise error_cls(
+                    message=f"HTTP error: {status_code}",
                     details={},
-                    status_code=429,
+                    status_code=status_code,
                     endpoint=endpoint,
                     method=method,
                     params=params,
                     json_body=json,
                     base_url=base_url,
                     response_text=response_text,
-                    retry_after=exc.response.headers.get("retry-after"),
-                    authenticated=authenticated,
+                ) from exc
+            except httpx.TimeoutException as exc:
+                logger.error("Request timeout for %s: %s", endpoint, str(exc))
+                raise S2TimeoutError(
+                    message=f"Request timed out after {Config.TIMEOUT} seconds",
+                    details={},
+                    endpoint=endpoint,
+                    method=method,
+                    timeout_seconds=Config.TIMEOUT,
+                ) from exc
+            except S2RateLimitError:
+                raise
+            except Exception as exc:
+                logger.error("Unexpected error for %s: %s", endpoint, str(exc))
+                raise S2ApiError(
+                    message=str(exc),
+                    details={},
+                    endpoint=endpoint,
+                    method=method,
+                    params=params,
+                    json_body=json,
+                    base_url=base_url,
                 ) from exc
 
-            error_cls = S2NotFoundError if status_code == 404 else S2ApiError
-            raise error_cls(
-                message=f"HTTP error: {status_code}",
-                details={},
-                status_code=status_code,
-                endpoint=endpoint,
-                method=method,
-                params=params,
-                json_body=json,
-                base_url=base_url,
-                response_text=response_text,
-            ) from exc
-        except httpx.TimeoutException as exc:
-            logger.error("Request timeout for %s: %s", endpoint, str(exc))
-            raise S2TimeoutError(
-                message=f"Request timed out after {Config.TIMEOUT} seconds",
-                details={},
-                endpoint=endpoint,
-                method=method,
-                timeout_seconds=Config.TIMEOUT,
-            ) from exc
-        except Exception as exc:
-            logger.error("Unexpected error for %s: %s", endpoint, str(exc))
-            raise S2ApiError(
-                message=str(exc),
-                details={},
-                endpoint=endpoint,
-                method=method,
-                params=params,
-                json_body=json,
-                base_url=base_url,
-            ) from exc
+        # Should not reach here, but just in case
+        assert last_rate_limit_exc is not None
+        raise last_rate_limit_exc
+
+    @staticmethod
+    def _backoff_delay(attempt: int, retry_after: Optional[str] = None) -> float:
+        """Calculate delay with exponential backoff + jitter, respecting retry-after header."""
+        if retry_after:
+            try:
+                return max(float(retry_after), 0.1)
+            except (ValueError, TypeError):
+                pass
+        # Exponential backoff: 1s, 2s, 4s + jitter up to 1s
+        return (S2Transport.BASE_BACKOFF * (2 ** attempt)) + random.uniform(0, 1.0)
 
 
 class MakeRequestCompatTransport:
