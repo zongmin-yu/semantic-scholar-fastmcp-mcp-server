@@ -40,6 +40,7 @@ dev = [
 ]
 
 [project.scripts]
+semantic-scholar-fastmcp = "semantic_scholar.server:main"
 semantic-scholar-mcp-server = "semantic_scholar.server:main"
 
 [project.urls]
