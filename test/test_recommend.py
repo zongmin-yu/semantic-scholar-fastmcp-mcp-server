@@ -40,7 +40,7 @@ class TestRecommendationTools(unittest.TestCase):
 
     async def async_test_with_delay(self, coro):
         """Helper to run async tests with delay to handle rate limiting"""
-        await asyncio.sleep(1)  # Add 1 second delay between tests
+        await asyncio.sleep(3)  # Add 3 second delay between tests to avoid 429
         return await coro
 
     def test_paper_recommendations_single(self):
@@ -57,11 +57,11 @@ class TestRecommendationTools(unittest.TestCase):
     def test_paper_recommendations_multi(self):
         """Test multi-paper recommendations functionality"""
         result = self.run_async(self.async_test_with_delay(make_request(
-            "papers",  # No leading slash
+            "recommendations/papers/",  # Trailing slash required — S2 returns 308 without it
             method="POST",
             params={"fields": "title,year"},  # Minimal fields
             json={
-                "positivePaperIds": self.positive_paper_ids,  # Changed key name to match API
+                "positivePaperIds": self.positive_paper_ids,
                 "negativePaperIds": self.negative_paper_ids
             }
         )))

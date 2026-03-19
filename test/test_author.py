@@ -31,7 +31,7 @@ class TestAuthorTools(unittest.TestCase):
 
     async def async_test_with_delay(self, coro):
         """Helper to run async tests with delay to handle rate limiting"""
-        await asyncio.sleep(1)  # Add 1 second delay between tests
+        await asyncio.sleep(3)  # Add 3 second delay between tests to avoid 429
         return await coro
 
     def test_author_search(self):

@@ -155,6 +155,48 @@ class TestRetryOn429:
         assert mock_client.request.call_count == 3
 
 
+class TestUnauthenticatedRetry:
+    """Simulate unauthenticated users (no API key) hitting rate limits — the core use case for issue #10."""
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated_user_gets_result_after_retry(self, transport):
+        """User without API key gets 429, server retries, eventually succeeds."""
+        mock_client = AsyncMock()
+        mock_client.request = AsyncMock(
+            side_effect=[
+                _make_response(429, headers={"retry-after": "2"}),
+                _make_response(429),
+                _make_response(200, json_data={"data": [{"title": "Attention Is All You Need"}]}),
+            ]
+        )
+
+        with patch("semantic_scholar.core.transport.initialize_client", return_value=mock_client), \
+             patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await transport.request_json("/paper/search", params={"q": "attention"})
+
+        assert result == {"data": [{"title": "Attention Is All You Need"}]}
+        assert mock_client.request.call_count == 3
+        assert mock_sleep.call_count == 2
+        # First retry uses retry-after header
+        assert mock_sleep.call_args_list[0].args[0] == 2.0
+
+    @pytest.mark.asyncio
+    async def test_unauthenticated_error_reports_no_api_key(self, transport):
+        """When retries exhausted, error indicates user is unauthenticated."""
+        mock_client = AsyncMock()
+        mock_client.request = AsyncMock(
+            side_effect=[_make_response(429) for _ in range(4)]
+        )
+
+        with patch("semantic_scholar.core.transport.initialize_client", return_value=mock_client), \
+             patch("asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(S2RateLimitError) as exc_info:
+                await transport.request_json("/paper/search", params={"q": "test"})
+
+        assert exc_info.value.authenticated is False
+        assert "API key" in exc_info.value.message
+
+
 class TestBackoffDelay:
     """Unit tests for _backoff_delay calculation."""
 

@@ -61,8 +61,8 @@ async def make_request(endpoint: str, params: Dict = None, method: str = "GET", 
         if endpoint.startswith("/"):
             endpoint = endpoint[1:]
         if is_recommendations and endpoint.startswith("recommendations/"):
-            endpoint = endpoint[15:]  # Remove "recommendations/" prefix
-            
+            endpoint = endpoint[len("recommendations/"):]  # Remove "recommendations/" prefix
+
         url = f"{base_url}/{endpoint}"
         logger.info(f"Making {method} request to {url}")
         logger.info(f"Headers: {headers}")
