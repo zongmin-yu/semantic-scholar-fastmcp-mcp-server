@@ -67,7 +67,7 @@ class TestRetryOn429:
         """429 on all attempts -> raises S2RateLimitError."""
         mock_client = AsyncMock()
         mock_client.request = AsyncMock(
-            side_effect=[_make_response(429) for _ in range(4)]
+            side_effect=[_make_response(429) for _ in range(6)]
         )
 
         with patch("semantic_scholar.core.transport.initialize_client", return_value=mock_client), \
@@ -76,7 +76,7 @@ class TestRetryOn429:
                 await transport.request_json("/paper/search", params={"q": "test"})
 
         assert exc_info.value.status_code == 429
-        assert mock_client.request.call_count == 4  # 1 initial + 3 retries
+        assert mock_client.request.call_count == 6  # 1 initial + 5 retries
 
     @pytest.mark.asyncio
     async def test_retry_respects_retry_after_header(self, transport):
@@ -185,7 +185,7 @@ class TestUnauthenticatedRetry:
         """When retries exhausted, error indicates user is unauthenticated."""
         mock_client = AsyncMock()
         mock_client.request = AsyncMock(
-            side_effect=[_make_response(429) for _ in range(4)]
+            side_effect=[_make_response(429) for _ in range(6)]
         )
 
         with patch("semantic_scholar.core.transport.initialize_client", return_value=mock_client), \
@@ -216,3 +216,12 @@ class TestBackoffDelay:
             assert S2Transport._backoff_delay(0) == pytest.approx(1.0)
             assert S2Transport._backoff_delay(1) == pytest.approx(2.0)
             assert S2Transport._backoff_delay(2) == pytest.approx(4.0)
+            assert S2Transport._backoff_delay(3) == pytest.approx(8.0)
+            assert S2Transport._backoff_delay(4) == pytest.approx(16.0)
+
+    def test_backoff_capped_at_max(self):
+        """Delay should never exceed MAX_BACKOFF + jitter."""
+        with patch("random.uniform", return_value=0.0):
+            # attempt 5 would be 32s without cap, should be capped to 30s
+            assert S2Transport._backoff_delay(5) == pytest.approx(30.0)
+            assert S2Transport._backoff_delay(10) == pytest.approx(30.0)

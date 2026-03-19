@@ -232,8 +232,9 @@ def error_dict_to_exception(
 
 
 class S2Transport:
-    MAX_RETRIES = 3
+    MAX_RETRIES = 5
     BASE_BACKOFF = 1.0  # seconds
+    MAX_BACKOFF = 30.0  # seconds — cap to avoid excessive waits
 
     async def request_json(
         self,
@@ -367,8 +368,10 @@ class S2Transport:
                 return max(float(retry_after), 0.1)
             except (ValueError, TypeError):
                 pass
-        # Exponential backoff: 1s, 2s, 4s + jitter up to 1s
-        return (S2Transport.BASE_BACKOFF * (2 ** attempt)) + random.uniform(0, 1.0)
+        # Exponential backoff: 1s, 2s, 4s, 8s, 16s + jitter, capped at MAX_BACKOFF
+        delay = S2Transport.BASE_BACKOFF * (2 ** attempt)
+        delay = min(delay, S2Transport.MAX_BACKOFF)
+        return delay + random.uniform(0, 1.0)
 
 
 class MakeRequestCompatTransport:
